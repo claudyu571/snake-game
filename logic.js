@@ -51,7 +51,7 @@
       gridRows,
       snake,
       direction: "right",
-      queuedDirection: null,
+      directionQueue: [],
       food: placeFood(gridCols, gridRows, snake, rng),
       gems: [],
       activeEffects: [],
@@ -69,19 +69,20 @@
       return state;
     }
 
-    const current = state.queuedDirection || state.direction;
+    const queue = state.directionQueue;
+    const last = queue.length > 0 ? queue[queue.length - 1] : state.direction;
 
-    if (nextDirection === current) {
+    if (nextDirection === last || OPPOSITE[nextDirection] === last) {
       return state;
     }
 
-    if (OPPOSITE[nextDirection] === current) {
+    if (queue.length >= 2) {
       return state;
     }
 
     return {
       ...state,
-      queuedDirection: nextDirection,
+      directionQueue: [...queue, nextDirection],
     };
   }
 
@@ -102,7 +103,8 @@
       return state.events && state.events.length ? { ...state, events: [] } : state;
     }
 
-    const direction = state.queuedDirection || state.direction;
+    const direction = state.directionQueue.length > 0 ? state.directionQueue[0] : state.direction;
+    const directionQueue = state.directionQueue.slice(1);
     const delta = DIRS[direction];
     const head = state.snake[0];
     const newHead = { x: head.x + delta.x, y: head.y + delta.y };
@@ -118,7 +120,7 @@
       return {
         ...state,
         direction,
-        queuedDirection: null,
+        directionQueue: [],
         status: "gameover",
         events: [{ type: "gameover" }],
       };
@@ -138,7 +140,7 @@
       return {
         ...state,
         direction,
-        queuedDirection: null,
+        directionQueue: [],
         status: "gameover",
         events: [{ type: "gameover" }],
       };
@@ -226,7 +228,7 @@
       ...state,
       snake,
       direction,
-      queuedDirection: null,
+      directionQueue,
       food,
       gems,
       activeEffects,
