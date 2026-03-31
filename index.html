@@ -11,7 +11,7 @@
       <section class="play-area panel">
         <div class="play-header">
           <div>
-            <p class="eyebrow">Classic Mode</p>
+            <p class="eyebrow" id="mode-eyebrow">Classic Mode</p>
             <h1>Snake</h1>
           </div>
           <button id="change-player-btn" class="secondary-btn" type="button">
@@ -43,10 +43,24 @@
             <p id="overlay-message"></p>
           </div>
         </div>
+
+        <div id="dpad" class="dpad" aria-label="Directional controls">
+          <button id="dpad-up"    class="dpad-btn" type="button" aria-label="Up">▲</button>
+          <div class="dpad-middle">
+            <button id="dpad-left"  class="dpad-btn" type="button" aria-label="Left">◀</button>
+            <div class="dpad-center"></div>
+            <button id="dpad-right" class="dpad-btn" type="button" aria-label="Right">▶</button>
+          </div>
+          <button id="dpad-down"  class="dpad-btn" type="button" aria-label="Down">▼</button>
+        </div>
       </section>
 
       <aside class="sidebar">
         <section class="panel controls-panel">
+          <div class="mode-toggle" role="group" aria-label="Game mode">
+            <button id="mode-classic-btn" class="mode-toggle-btn active" type="button" aria-pressed="true">Classic</button>
+            <button id="mode-advanced-btn" class="mode-toggle-btn" type="button" aria-pressed="false">Advanced</button>
+          </div>
           <div class="controls">
             <button id="pause-btn" type="button">Pause</button>
             <button id="restart-btn" type="button">Restart</button>
@@ -54,12 +68,20 @@
           <p id="help" class="help">
             Move with Arrow keys or WASD. Pause with Space or P. Restart with R.
           </p>
+          <p id="gem-help" class="help hidden">
+            Gems appear after eating food and vanish after ~8s.<br />
+            Gold = +5 pts &nbsp;&middot;&nbsp;
+            Cyan = shrink &nbsp;&middot;&nbsp;
+            Orange = speed &nbsp;&middot;&nbsp;
+            Purple = slow &nbsp;&middot;&nbsp;
+            Pink = 2&times; score (5 food)
+          </p>
         </section>
 
         <section class="leaderboard panel" aria-label="Leaderboard">
           <div class="leaderboard-header">
             <h2>Leaderboard</h2>
-            <span class="leaderboard-note">Top 5 local scores</span>
+            <span id="leaderboard-mode-note" class="leaderboard-note">Top 5 &middot; Classic</span>
           </div>
           <table>
             <thead>

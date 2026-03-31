@@ -136,6 +136,65 @@ h1 {
     linear-gradient(180deg, rgba(10, 16, 14, 0.92), rgba(8, 12, 10, 0.98)),
     var(--board);
   overflow: hidden;
+  touch-action: none;
+}
+
+/* D-pad — hidden on desktop, visible on touch devices */
+.dpad {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 0 4px;
+}
+
+.dpad-middle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dpad-center {
+  width: 58px;
+  height: 58px;
+}
+
+.dpad-btn {
+  width: 58px;
+  height: 58px;
+  min-height: unset;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dpad-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  transform: none;
+  filter: none;
+}
+
+.dpad-btn:active {
+  background: rgba(116, 214, 128, 0.18);
+  border-color: rgba(116, 214, 128, 0.35);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .dpad {
+    display: flex;
+  }
+
+  .play-area {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
 }
 
 canvas {
@@ -176,6 +235,41 @@ canvas {
 .controls-panel,
 .leaderboard {
   padding: 18px;
+}
+
+.mode-toggle {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 3px;
+  margin-bottom: 14px;
+}
+
+.mode-toggle-btn {
+  flex: 1;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.mode-toggle-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  transform: none;
+  filter: none;
+}
+
+.mode-toggle-btn.active {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: #08100d;
 }
 
 .controls {

@@ -1,7 +1,13 @@
 const CELL_SIZE = 33;
 const TICK_MS = 120;
-const LEADERBOARD_KEY = "snake.leaderboard.v1";
+const MIN_TICK_MS = 50;
+const SPEED_STEP = 3; // ms reduction per point scored
+const LEADERBOARD_KEYS = {
+  classic: "snake.leaderboard.classic.v1",
+  advanced: "snake.leaderboard.advanced.v1",
+};
 const PLAYER_NAME_KEY = "snake.playerName.v1";
+const GAME_MODE_KEY = "snake.gameMode.v1";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -10,6 +16,15 @@ const scoreEl = document.getElementById("score");
 const bestScoreEl = document.getElementById("best-score");
 const statusEl = document.getElementById("status");
 const playerDisplay = document.getElementById("player-display");
+const modeEyebrow = document.getElementById("mode-eyebrow");
+const modeClassicBtn = document.getElementById("mode-classic-btn");
+const modeAdvancedBtn = document.getElementById("mode-advanced-btn");
+const gemHelp = document.getElementById("gem-help");
+const leaderboardModeNote = document.getElementById("leaderboard-mode-note");
+const dpadUp    = document.getElementById("dpad-up");
+const dpadDown  = document.getElementById("dpad-down");
+const dpadLeft  = document.getElementById("dpad-left");
+const dpadRight = document.getElementById("dpad-right");
 const pauseBtn = document.getElementById("pause-btn");
 const restartBtn = document.getElementById("restart-btn");
 const changePlayerBtn = document.getElementById("change-player-btn");
@@ -26,8 +41,10 @@ const startBtn = document.getElementById("start-btn");
 
 let gridCols = 20;
 let gridRows = 20;
+let gameMode = "classic"; // "classic" | "advanced"
 let state = null;
 let intervalId = null;
+let currentTickMs = 120;
 let gameStarted = false;
 let playerName = "";
 
@@ -50,6 +67,36 @@ function sanitizeName(rawName) {
   return rawName.trim().slice(0, 20);
 }
 
+function loadSavedGameMode() {
+  try {
+    const saved = localStorage.getItem(GAME_MODE_KEY);
+    return saved === "advanced" ? "advanced" : "classic";
+  } catch {
+    return "classic";
+  }
+}
+
+function saveGameMode(mode) {
+  try {
+    localStorage.setItem(GAME_MODE_KEY, mode);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function applyGameMode(mode) {
+  gameMode = mode;
+  modeEyebrow.textContent = mode === "advanced" ? "Advanced Mode" : "Classic Mode";
+  modeClassicBtn.classList.toggle("active", mode === "classic");
+  modeClassicBtn.setAttribute("aria-pressed", String(mode === "classic"));
+  modeAdvancedBtn.classList.toggle("active", mode === "advanced");
+  modeAdvancedBtn.setAttribute("aria-pressed", String(mode === "advanced"));
+  gemHelp.classList.toggle("hidden", mode !== "advanced");
+  saveGameMode(mode);
+  renderLeaderboard(loadLeaderboard(mode), mode);
+  resetGame();
+}
+
 function isModalOpen() {
   return !nameModal.classList.contains("hidden");
 }
@@ -59,12 +106,8 @@ function resizeBoard() {
   const availW = Math.max(CELL_SIZE, frameRect.width);
   const availH = Math.max(CELL_SIZE, frameRect.height);
 
-  const newCols = Math.max(10, Math.floor(availW / CELL_SIZE));
-  const newRows = Math.max(10, Math.floor(availH / CELL_SIZE));
-  const dimsChanged = newCols !== gridCols || newRows !== gridRows;
-
-  gridCols = newCols;
-  gridRows = newRows;
+  gridCols = Math.max(10, Math.floor(availW / CELL_SIZE));
+  gridRows = Math.max(10, Math.floor(availH / CELL_SIZE));
 
   const boardW = gridCols * CELL_SIZE;
   const boardH = gridRows * CELL_SIZE;
@@ -75,8 +118,30 @@ function resizeBoard() {
   canvas.style.width = `${boardW}px`;
   canvas.style.height = `${boardH}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
-  return dimsChanged;
+function getBaseTickMs() {
+  const score = state ? state.score : 0;
+  return Math.max(MIN_TICK_MS, TICK_MS - score * SPEED_STEP);
+}
+
+function getTickMs() {
+  const base = getBaseTickMs();
+  if (!state || !state.activeEffects) return base;
+  if (state.activeEffects.some((e) => e.type === "speed")) return Math.max(35, Math.floor(base * 0.55));
+  if (state.activeEffects.some((e) => e.type === "slow")) return Math.min(280, Math.floor(base * 1.65));
+  return base;
+}
+
+function updateTickSpeed() {
+  const newTickMs = getTickMs();
+  if (newTickMs !== currentTickMs) {
+    currentTickMs = newTickMs;
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = setInterval(tick, currentTickMs);
+    }
+  }
 }
 
 function setControlsEnabled(enabled) {
@@ -100,9 +165,9 @@ function savePlayerName(name) {
   }
 }
 
-function loadLeaderboard() {
+function loadLeaderboard(mode = gameMode) {
   try {
-    const raw = localStorage.getItem(LEADERBOARD_KEY);
+    const raw = localStorage.getItem(LEADERBOARD_KEYS[mode]);
     if (!raw) {
       return [];
     }
@@ -130,9 +195,9 @@ function loadLeaderboard() {
   }
 }
 
-function saveLeaderboard(entries) {
+function saveLeaderboard(entries, mode = gameMode) {
   try {
-    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries));
+    localStorage.setItem(LEADERBOARD_KEYS[mode], JSON.stringify(entries));
   } catch (error) {
     // Ignore storage failures and continue without persistence.
   }
@@ -150,7 +215,8 @@ function getBestScore(entries) {
   return entries.length > 0 ? entries[0].score : 0;
 }
 
-function renderLeaderboard(entries = loadLeaderboard()) {
+function renderLeaderboard(entries = loadLeaderboard(), mode = gameMode) {
+  leaderboardModeNote.textContent = `Top 5 \u00b7 ${mode === "advanced" ? "Advanced" : "Classic"}`;
   leaderboardBody.innerHTML = "";
   bestScoreEl.textContent = String(getBestScore(entries));
 
@@ -248,7 +314,15 @@ function resetGame() {
     return;
   }
 
-  state = SnakeLogic.createInitialState({ gridCols, gridRows });
+  if (currentTickMs !== TICK_MS) {
+    currentTickMs = TICK_MS;
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = setInterval(tick, currentTickMs);
+    }
+  }
+
+  state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: gameMode === "advanced" });
   render();
 }
 
@@ -276,6 +350,7 @@ function tick() {
     recordScore(state.score);
   }
 
+  updateTickSpeed();
   render();
 }
 
@@ -298,6 +373,16 @@ function getStatusText() {
 
   if (state.status === "win") {
     return "Victory";
+  }
+
+  if (state.activeEffects && state.activeEffects.length > 0) {
+    const effect = state.activeEffects[0];
+    if (effect.type === "speed") return "Speed!";
+    if (effect.type === "slow") return "Slowed";
+  }
+
+  if (state.scoreMultiplier > 1) {
+    return `2x (${state.multiplierFoodLeft} left)`;
   }
 
   return "Running";
@@ -376,6 +461,40 @@ function drawCell(x, y, color) {
   );
 }
 
+const GEM_COLOURS = {
+  bonus:      "#ffd700",  // gold
+  shrink:     "#00cfff",  // cyan
+  speed:      "#ff8800",  // orange
+  slow:       "#aa44ff",  // purple
+  multiplier: "#ff44aa",  // pink
+};
+
+function drawGem(x, y, type, ticksLeft) {
+  const color = GEM_COLOURS[type] ?? "#ffffff";
+  const cx = x * CELL_SIZE + CELL_SIZE / 2;
+  const cy = y * CELL_SIZE + CELL_SIZE / 2;
+  const r = Math.max(3, Math.floor(CELL_SIZE * 0.34));
+
+  // Pulse opacity when fewer than 20 ticks remain (~2.4s warning)
+  const alpha = ticksLeft < 20
+    ? 0.4 + 0.6 * ((ticksLeft % 6) / 6)
+    : 1;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = color;
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+
+  // Inner highlight
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.fillRect(-r * 0.45, -r * 0.45, r * 0.7, r * 0.7);
+  ctx.restore();
+}
+
 function render() {
   scoreEl.textContent = state ? String(state.score) : "0";
   statusEl.textContent = getStatusText();
@@ -388,6 +507,10 @@ function render() {
       drawCell(state.food.x, state.food.y, "#ff7869");
     }
 
+    state.gems.forEach((gem) => {
+      drawGem(gem.x, gem.y, gem.type, gem.ticksLeft);
+    });
+
     state.snake.forEach((segment, index) => {
       drawCell(segment.x, segment.y, index === 0 ? "#7cf08d" : "#2da44e");
     });
@@ -395,6 +518,70 @@ function render() {
 
   updateOverlay();
 }
+
+// ── D-pad ──────────────────────────────────────────────────────────────────
+function handleDpadInput(dir) {
+  if (!gameStarted || isModalOpen()) return;
+  if (state && state.status === "playing") {
+    state = SnakeLogic.queueDirection(state, dir);
+  }
+}
+
+[
+  [dpadUp,    "up"],
+  [dpadDown,  "down"],
+  [dpadLeft,  "left"],
+  [dpadRight, "right"],
+].forEach(([btn, dir]) => {
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    handleDpadInput(dir);
+  });
+});
+// ───────────────────────────────────────────────────────────────────────────
+
+// ── Swipe detection ────────────────────────────────────────────────────────
+let swipeStartX = null;
+let swipeStartY = null;
+const SWIPE_THRESHOLD = 20;
+
+boardFrame.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  swipeStartX = t.clientX;
+  swipeStartY = t.clientY;
+}, { passive: true });
+
+boardFrame.addEventListener("touchend", (e) => {
+  if (swipeStartX === null || isModalOpen() || !gameStarted) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeStartX;
+  const dy = t.clientY - swipeStartY;
+  swipeStartX = null;
+  swipeStartY = null;
+
+  if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+
+  const dir = Math.abs(dx) > Math.abs(dy)
+    ? (dx > 0 ? "right" : "left")
+    : (dy > 0 ? "down" : "up");
+
+  if (state && state.status === "playing") {
+    state = SnakeLogic.queueDirection(state, dir);
+  }
+}, { passive: true });
+// ───────────────────────────────────────────────────────────────────────────
+
+modeClassicBtn.addEventListener("click", () => {
+  if (gameMode !== "classic") {
+    applyGameMode("classic");
+  }
+});
+
+modeAdvancedBtn.addEventListener("click", () => {
+  if (gameMode !== "advanced") {
+    applyGameMode("advanced");
+  }
+});
 
 pauseBtn.addEventListener("click", togglePause);
 restartBtn.addEventListener("click", resetGame);
@@ -446,27 +633,20 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("resize", () => {
-  const dimsChanged = resizeBoard();
-  if (dimsChanged) {
-    resetGame();
-  } else {
-    render();
-  }
+  resizeBoard();
+  render();
 });
 
 if ("ResizeObserver" in window) {
   const boardObserver = new ResizeObserver(() => {
-    const dimsChanged = resizeBoard();
-    if (dimsChanged) {
-      resetGame();
-    } else {
-      render();
-    }
+    resizeBoard();
+    render();
   });
   boardObserver.observe(boardFrame);
 }
 
 setPlayer(loadSavedPlayerName());
+applyGameMode(loadSavedGameMode());
 resizeBoard();
 setControlsEnabled(false);
 renderLeaderboard();
