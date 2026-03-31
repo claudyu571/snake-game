@@ -322,6 +322,7 @@ function resetGame() {
     }
   }
 
+  pops.length = 0;
   state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: gameMode === "advanced" });
   render();
 }
@@ -333,6 +334,15 @@ function togglePause() {
 
   state = SnakeLogic.togglePause(state);
   render();
+}
+
+function playSoundEvents(events = []) {
+  events.forEach((e) => {
+    if (e.type === "eat")      SoundEngine.eat();
+    else if (e.type === "gem") SoundEngine.gem(e.gemType);
+    else if (e.type === "win") SoundEngine.win();
+    else if (e.type === "gameover") SoundEngine.gameOver();
+  });
 }
 
 function tick() {
@@ -350,6 +360,8 @@ function tick() {
     recordScore(state.score);
   }
 
+  playSoundEvents(state.events);
+  spawnPopEvents(state.events);
   updateTickSpeed();
   render();
 }
@@ -461,6 +473,66 @@ function drawCell(x, y, color) {
   );
 }
 
+// ── Score pops ─────────────────────────────────────────────────────────────
+const pops = [];
+
+const GEM_POP = {
+  bonus:      { text: "+5",     color: "#ffd700" },
+  shrink:     { text: "shrink", color: "#00cfff" },
+  speed:      { text: "speed!", color: "#ff8800" },
+  slow:       { text: "slow",   color: "#aa44ff" },
+  multiplier: { text: "\u00d72!", color: "#ff44aa" },
+};
+
+function spawnPop(gridX, gridY, text, color) {
+  pops.push({
+    x: gridX * CELL_SIZE + CELL_SIZE / 2,
+    y: gridY * CELL_SIZE + CELL_SIZE * 0.25,
+    text,
+    color,
+    life: 1.0,
+    dy: 0,
+  });
+}
+
+function spawnPopEvents(events = []) {
+  events.forEach((e) => {
+    if (e.type === "eat") {
+      spawnPop(e.x, e.y, `+${e.points}`, "#edf4ee");
+    } else if (e.type === "gem") {
+      const def = GEM_POP[e.gemType];
+      if (def) spawnPop(e.x, e.y, def.text, def.color);
+    }
+  });
+}
+
+function updateAndDrawPops() {
+  const fontSize = Math.max(10, Math.floor(CELL_SIZE * 0.52));
+  ctx.font = `700 ${fontSize}px "Trebuchet MS", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  for (let i = pops.length - 1; i >= 0; i--) {
+    const p = pops[i];
+    p.life -= 0.13;
+    p.dy   -= 1.8;
+
+    if (p.life <= 0) {
+      pops.splice(i, 1);
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.fillText(p.text, p.x, p.y + p.dy);
+    ctx.restore();
+  }
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 const GEM_COLOURS = {
   bonus:      "#ffd700",  // gold
   shrink:     "#00cfff",  // cyan
@@ -516,6 +588,7 @@ function render() {
     });
   }
 
+  updateAndDrawPops();
   updateOverlay();
 }
 
@@ -644,6 +717,11 @@ if ("ResizeObserver" in window) {
   });
   boardObserver.observe(boardFrame);
 }
+
+// Resume AudioContext on first interaction (browser autoplay policy)
+["keydown", "pointerdown", "touchstart"].forEach((evt) => {
+  document.addEventListener(evt, () => SoundEngine.resume(), { once: true, passive: true });
+});
 
 setPlayer(loadSavedPlayerName());
 applyGameMode(loadSavedGameMode());

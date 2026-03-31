@@ -60,6 +60,7 @@
       enableGems,
       score: 0,
       status: "playing",
+      events: [],
     };
   }
 
@@ -98,7 +99,7 @@
 
   function step(state, rng = Math.random) {
     if (state.status !== "playing") {
-      return state;
+      return state.events && state.events.length ? { ...state, events: [] } : state;
     }
 
     const direction = state.queuedDirection || state.direction;
@@ -119,6 +120,7 @@
         direction,
         queuedDirection: null,
         status: "gameover",
+        events: [{ type: "gameover" }],
       };
     }
 
@@ -138,6 +140,7 @@
         direction,
         queuedDirection: null,
         status: "gameover",
+        events: [{ type: "gameover" }],
       };
     }
 
@@ -153,10 +156,12 @@
     let status = state.status;
     let scoreMultiplier = state.scoreMultiplier;
     let multiplierFoodLeft = state.multiplierFoodLeft;
+    const events = [];
 
     if (hitFood) {
       snake = [newHead, ...state.snake];
       score += scoreMultiplier;
+      events.push({ type: "eat", x: newHead.x, y: newHead.y, points: scoreMultiplier });
 
       if (scoreMultiplier > 1) {
         multiplierFoodLeft -= 1;
@@ -169,6 +174,7 @@
       if (snake.length === gridCols * gridRows) {
         status = "win";
         food = null;
+        events.push({ type: "win" });
       } else {
         food = placeFood(gridCols, gridRows, snake, rng);
       }
@@ -186,6 +192,7 @@
     let gems = state.gems.filter((_, i) => i !== hitGemIndex);
 
     if (hitGem) {
+      events.push({ type: "gem", gemType: hitGem.type, x: hitGem.x, y: hitGem.y });
       if (hitGem.type === "bonus") {
         score += BONUS_GEM_POINTS;
       } else if (hitGem.type === "shrink") {
@@ -227,6 +234,7 @@
       multiplierFoodLeft,
       score,
       status,
+      events,
     };
   }
 
