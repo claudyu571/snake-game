@@ -16,6 +16,8 @@
   const GEM_LIFETIME_TICKS = 67;   // ~8 seconds at 120ms per tick
   const GEM_SPAWN_CHANCE = 0.45;   // 45% chance to spawn a gem after eating food
   const MAX_GEMS = 2;
+  const OBSTACLE_INTERVAL = 5;     // spawn one obstacle every N points
+  const MAX_OBSTACLES = 25;
   const BONUS_GEM_POINTS = 5;
   const SHRINK_AMOUNT = 3;
   const MIN_SNAKE_LENGTH = 3;
@@ -45,6 +47,8 @@
     ];
 
     const enableGems = options.enableGems === true;
+    const wrapAround = options.wrapAround === true;
+    const enableObstacles = options.enableObstacles === true;
 
     return {
       gridCols,
@@ -58,6 +62,10 @@
       scoreMultiplier: 1,
       multiplierFoodLeft: 0,
       enableGems,
+      wrapAround,
+      enableObstacles,
+      obstacles: [],
+      nextObstacleScore: OBSTACLE_INTERVAL,
       score: 0,
       status: "playing",
       events: [],
@@ -110,13 +118,34 @@
     const newHead = { x: head.x + delta.x, y: head.y + delta.y };
     const { gridCols, gridRows } = state;
 
-    // Wall collision
+    // Wall collision or wrap-around
     if (
       newHead.x < 0 ||
       newHead.y < 0 ||
       newHead.x >= gridCols ||
       newHead.y >= gridRows
     ) {
+      if (state.wrapAround) {
+        newHead.x = (newHead.x + gridCols) % gridCols;
+        newHead.y = (newHead.y + gridRows) % gridRows;
+      } else {
+        return {
+          ...state,
+          direction,
+          directionQueue: [],
+          status: "gameover",
+          events: [{ type: "gameover" }],
+        };
+      }
+    }
+
+    const hitFood =
+      state.food &&
+      newHead.x === state.food.x &&
+      newHead.y === state.food.y;
+
+    // Obstacle collision
+    if (state.obstacles.some((o) => o.x === newHead.x && o.y === newHead.y)) {
       return {
         ...state,
         direction,
@@ -125,11 +154,6 @@
         events: [{ type: "gameover" }],
       };
     }
-
-    const hitFood =
-      state.food &&
-      newHead.x === state.food.x &&
-      newHead.y === state.food.y;
 
     // Body collision (exclude tail when not eating, as it will have moved)
     const bodyToCheck = hitFood
@@ -158,6 +182,8 @@
     let status = state.status;
     let scoreMultiplier = state.scoreMultiplier;
     let multiplierFoodLeft = state.multiplierFoodLeft;
+    let obstacles = state.obstacles;
+    let nextObstacleScore = state.nextObstacleScore;
     const events = [];
 
     if (hitFood) {
@@ -224,6 +250,15 @@
       gems = trySpawnGem(gridCols, gridRows, snake, food, gems, rng);
     }
 
+    // Spawn an obstacle at each score milestone (Advanced mode only)
+    if (hitFood && status === "playing" && state.enableObstacles && score >= nextObstacleScore && obstacles.length < MAX_OBSTACLES) {
+      const pos = placeObstacle(gridCols, gridRows, snake, food, gems, obstacles, rng);
+      if (pos) {
+        obstacles = [...obstacles, pos];
+        nextObstacleScore += OBSTACLE_INTERVAL;
+      }
+    }
+
     return {
       ...state,
       snake,
@@ -234,6 +269,8 @@
       activeEffects,
       scoreMultiplier,
       multiplierFoodLeft,
+      obstacles,
+      nextObstacleScore,
       score,
       status,
       events,
@@ -283,6 +320,38 @@
         if (count === targetIndex) {
           return { x, y };
         }
+        count += 1;
+      }
+    }
+
+    return null;
+  }
+
+  function placeObstacle(gridCols, gridRows, snake, food, gems, obstacles, rng) {
+    const occupied = new Set(snake.map((s) => `${s.x},${s.y}`));
+    if (food) occupied.add(`${food.x},${food.y}`);
+    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
+    obstacles.forEach((o) => occupied.add(`${o.x},${o.y}`));
+
+    // Also keep a 2-cell buffer around the snake head to avoid instant death
+    const head = snake[0];
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        occupied.add(`${head.x + dx},${head.y + dy}`);
+      }
+    }
+
+    const totalCells = gridCols * gridRows;
+    const available = totalCells - occupied.size;
+    if (available <= 0) return null;
+
+    const targetIndex = Math.floor(rng() * available);
+    let count = 0;
+
+    for (let y = 0; y < gridRows; y += 1) {
+      for (let x = 0; x < gridCols; x += 1) {
+        if (occupied.has(`${x},${y}`)) continue;
+        if (count === targetIndex) return { x, y };
         count += 1;
       }
     }

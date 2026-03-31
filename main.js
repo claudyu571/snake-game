@@ -8,6 +8,7 @@ const LEADERBOARD_KEYS = {
 };
 const PLAYER_NAME_KEY = "snake.playerName.v1";
 const GAME_MODE_KEY = "snake.gameMode.v1";
+const WRAP_AROUND_KEY = "snake.wrapAround.v1";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -21,6 +22,8 @@ const modeClassicBtn = document.getElementById("mode-classic-btn");
 const modeAdvancedBtn = document.getElementById("mode-advanced-btn");
 const gemHelp = document.getElementById("gem-help");
 const leaderboardModeNote = document.getElementById("leaderboard-mode-note");
+const advancedOptions = document.getElementById("advanced-options");
+const wrapToggle = document.getElementById("wrap-toggle");
 const dpadUp    = document.getElementById("dpad-up");
 const dpadDown  = document.getElementById("dpad-down");
 const dpadLeft  = document.getElementById("dpad-left");
@@ -42,6 +45,7 @@ const startBtn = document.getElementById("start-btn");
 let gridCols = 20;
 let gridRows = 20;
 let gameMode = "classic"; // "classic" | "advanced"
+let wrapAround = false;
 let state = null;
 let intervalId = null;
 let currentTickMs = 120;
@@ -87,6 +91,22 @@ function saveGameMode(mode) {
   }
 }
 
+function loadSavedWrapAround() {
+  try {
+    return localStorage.getItem(WRAP_AROUND_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveWrapAround(value) {
+  try {
+    localStorage.setItem(WRAP_AROUND_KEY, String(value));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 function applyGameMode(mode) {
   gameMode = mode;
   modeEyebrow.textContent = mode === "advanced" ? "Advanced Mode" : "Classic Mode";
@@ -95,6 +115,7 @@ function applyGameMode(mode) {
   modeAdvancedBtn.classList.toggle("active", mode === "advanced");
   modeAdvancedBtn.setAttribute("aria-pressed", String(mode === "advanced"));
   gemHelp.classList.toggle("hidden", mode !== "advanced");
+  advancedOptions.classList.toggle("hidden", mode !== "advanced");
   saveGameMode(mode);
   renderLeaderboard(loadLeaderboard(mode), mode);
   resetGame();
@@ -342,7 +363,8 @@ function resetGame() {
   celebration = null;
   personalBest = getPlayerBest(playerName, gameMode);
   newBestCelebrated = false;
-  state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: gameMode === "advanced" });
+  const isAdvanced = gameMode === "advanced";
+  state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: isAdvanced, enableObstacles: isAdvanced, wrapAround: isAdvanced && wrapAround });
   render();
 }
 
@@ -597,6 +619,24 @@ function updateAndDrawPops() {
 }
 // ───────────────────────────────────────────────────────────────────────────
 
+function drawObstacle(x, y) {
+  const px = x * CELL_SIZE;
+  const py = y * CELL_SIZE;
+
+  ctx.fillStyle = "#3a4855";
+  ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+
+  // Top/left highlight
+  ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
+  ctx.fillRect(px, py, CELL_SIZE, 2);
+  ctx.fillRect(px, py, 2, CELL_SIZE);
+
+  // Bottom/right shadow
+  ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+  ctx.fillRect(px, py + CELL_SIZE - 2, CELL_SIZE, 2);
+  ctx.fillRect(px + CELL_SIZE - 2, py, 2, CELL_SIZE);
+}
+
 const GEM_COLOURS = {
   bonus:      "#ffd700",  // gold
   shrink:     "#00cfff",  // cyan
@@ -642,6 +682,8 @@ function render() {
     if (state.food) {
       drawCell(state.food.x, state.food.y, "#ff7869");
     }
+
+    state.obstacles.forEach((o) => drawObstacle(o.x, o.y));
 
     state.gems.forEach((gem) => {
       drawGem(gem.x, gem.y, gem.type, gem.ticksLeft);
@@ -708,6 +750,12 @@ boardFrame.addEventListener("touchend", (e) => {
   }
 }, { passive: true });
 // ───────────────────────────────────────────────────────────────────────────
+
+wrapToggle.addEventListener("change", () => {
+  wrapAround = wrapToggle.checked;
+  saveWrapAround(wrapAround);
+  resetGame();
+});
 
 modeClassicBtn.addEventListener("click", () => {
   if (gameMode !== "classic") {
@@ -789,6 +837,8 @@ if ("ResizeObserver" in window) {
 });
 
 setPlayer(loadSavedPlayerName());
+wrapAround = loadSavedWrapAround();
+wrapToggle.checked = wrapAround;
 applyGameMode(loadSavedGameMode());
 resizeBoard();
 setControlsEnabled(false);
