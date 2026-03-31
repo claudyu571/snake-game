@@ -68,14 +68,16 @@
           <p id="help" class="help">
             Move with Arrow keys or WASD. Pause with Space or P. Restart with R.
           </p>
-          <p id="gem-help" class="help hidden">
-            Gems appear after eating food and vanish after ~8s.<br />
-            Gold = +5 pts &nbsp;&middot;&nbsp;
-            Cyan = shrink &nbsp;&middot;&nbsp;
-            Orange = speed &nbsp;&middot;&nbsp;
-            Purple = slow &nbsp;&middot;&nbsp;
-            Pink = 2&times; score (5 food)
-          </p>
+          <div id="gem-help" class="gem-help hidden">
+            <p class="gem-help-intro">Gems appear after eating food and vanish after ~8s.</p>
+            <ul class="gem-legend">
+              <li><span class="gem-pip" style="--gem-color: #ffd700"></span>Gold &mdash; +5 points</li>
+              <li><span class="gem-pip" style="--gem-color: #00cfff"></span>Cyan &mdash; shrink snake</li>
+              <li><span class="gem-pip" style="--gem-color: #ff8800"></span>Orange &mdash; speed boost</li>
+              <li><span class="gem-pip" style="--gem-color: #aa44ff"></span>Purple &mdash; slow down</li>
+              <li><span class="gem-pip" style="--gem-color: #ff44aa"></span>Pink &mdash; 2&times; score (5 food)</li>
+            </ul>
+          </div>
         </section>
 
         <section class="leaderboard panel" aria-label="Leaderboard">

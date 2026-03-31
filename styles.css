@@ -312,6 +312,43 @@ button:disabled {
   line-height: 1.5;
 }
 
+.gem-help {
+  margin-top: 14px;
+}
+
+.gem-help-intro {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.gem-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.gem-legend li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.gem-pip {
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  background: var(--gem-color);
+  box-shadow: 0 0 6px var(--gem-color);
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
 .leaderboard-header {
   display: flex;
   justify-content: space-between;
