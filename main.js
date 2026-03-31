@@ -47,6 +47,9 @@ let intervalId = null;
 let currentTickMs = 120;
 let gameStarted = false;
 let playerName = "";
+let personalBest = 0;
+let newBestCelebrated = false;
+let celebration = null; // { life: 1.0 } when active
 
 const KEY_DIR = {
   ArrowUp: "up",
@@ -95,6 +98,19 @@ function applyGameMode(mode) {
   saveGameMode(mode);
   renderLeaderboard(loadLeaderboard(mode), mode);
   resetGame();
+}
+
+function getPlayerBest(name, mode) {
+  if (!name) return 0;
+  const entry = loadLeaderboard(mode).find((e) => e.name === name);
+  return entry ? entry.score : 0;
+}
+
+function triggerNewBest() {
+  newBestCelebrated = true;
+  celebration = { life: 1.0 };
+  boardFrame.classList.add("new-best");
+  setTimeout(() => boardFrame.classList.remove("new-best"), 900);
 }
 
 function isModalOpen() {
@@ -323,6 +339,9 @@ function resetGame() {
   }
 
   pops.length = 0;
+  celebration = null;
+  personalBest = getPlayerBest(playerName, gameMode);
+  newBestCelebrated = false;
   state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: gameMode === "advanced" });
   render();
 }
@@ -362,6 +381,11 @@ function tick() {
 
   playSoundEvents(state.events);
   spawnPopEvents(state.events);
+
+  if (!newBestCelebrated && state.score > personalBest && personalBest >= 0) {
+    triggerNewBest();
+  }
+
   updateTickSpeed();
   render();
 }
@@ -472,6 +496,46 @@ function drawCell(x, y, color) {
     size
   );
 }
+
+// ── New best celebration ────────────────────────────────────────────────────
+function drawCelebration() {
+  if (!celebration) return;
+
+  celebration.life -= 0.033; // ~30 ticks = ~3.6s
+  if (celebration.life <= 0) {
+    celebration = null;
+    return;
+  }
+
+  const boardW = gridCols * CELL_SIZE;
+  const boardH = gridRows * CELL_SIZE;
+
+  // Golden board tint — only in the first 20% of life
+  if (celebration.life > 0.8) {
+    const flashAlpha = ((celebration.life - 0.8) / 0.2) * 0.12;
+    ctx.fillStyle = `rgba(255, 215, 0, ${flashAlpha})`;
+    ctx.fillRect(0, 0, boardW, boardH);
+  }
+
+  // "NEW BEST!" text — fades in quickly then out slowly
+  const alpha = celebration.life > 0.85
+    ? (1 - celebration.life) / 0.15       // fade in over first 15%
+    : celebration.life / 0.85;            // fade out over remaining 85%
+
+  const fontSize = Math.max(14, Math.floor(CELL_SIZE * 1.1));
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.font = `900 ${fontSize}px "Trebuchet MS", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffd700";
+  ctx.shadowColor = "#ffd700";
+  ctx.shadowBlur = 22;
+  ctx.fillText("NEW BEST!", boardW / 2, boardH / 2);
+  ctx.restore();
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 // ── Score pops ─────────────────────────────────────────────────────────────
 const pops = [];
@@ -588,6 +652,7 @@ function render() {
     });
   }
 
+  drawCelebration();
   updateAndDrawPops();
   updateOverlay();
 }
