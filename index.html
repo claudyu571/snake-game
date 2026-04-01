@@ -104,9 +104,9 @@
         </section>
       </aside>
     </main>
-    <div id="name-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div id="name-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal">
-        <h2>Enter your name</h2>
+        <h2 id="modal-title">Enter your name</h2>
         <p>This name will be used on the leaderboard.</p>
         <div class="modal-field">
           <label class="modal-label" for="player-name">Username</label>
@@ -117,7 +117,7 @@
             placeholder="Your name"
             autocomplete="nickname"
           />
-          <div id="name-error" class="error"></div>
+          <div id="name-error" class="error" role="alert"></div>
         </div>
         <div class="modal-actions">
           <button id="start-btn" type="button">Start</button>
@@ -127,8 +127,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="sounds.js"></script>
-    <script src="logic.js"></script>
-    <script src="main.js"></script>
+    <script src="sounds.js" defer></script>
+    <script src="logic.js" defer></script>
+    <script src="main.js" defer></script>
   </body>
 </html>

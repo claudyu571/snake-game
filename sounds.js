@@ -34,6 +34,12 @@ const SoundEngine = (() => {
 
     osc.start(t);
     osc.stop(t + duration + 0.01);
+
+    // Disconnect nodes once the oscillator has finished to free Web Audio resources.
+    osc.onended = () => {
+      osc.disconnect();
+      vol.disconnect();
+    };
   }
 
   // ── Sound definitions ────────────────────────────────────────────────────

@@ -295,36 +295,38 @@
     return [...gems, { ...pos, type, ticksLeft: GEM_LIFETIME_TICKS }];
   }
 
-  function placeGem(gridCols, gridRows, snake, food, gems, rng) {
-    const occupied = new Set(snake.map((s) => `${s.x},${s.y}`));
-    if (food) {
-      occupied.add(`${food.x},${food.y}`);
-    }
-    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
-
-    const totalCells = gridCols * gridRows;
-    const available = totalCells - occupied.size;
-
-    if (available <= 0) {
-      return null;
-    }
+  // Shared helper: pick a random cell not in `occupied`. Returns {x, y} or null.
+  function findAvailableCell(gridCols, gridRows, occupied, rng) {
+    const available = gridCols * gridRows - occupied.size;
+    if (available <= 0) return null;
 
     const targetIndex = Math.floor(rng() * available);
     let count = 0;
 
     for (let y = 0; y < gridRows; y += 1) {
       for (let x = 0; x < gridCols; x += 1) {
-        if (occupied.has(`${x},${y}`)) {
-          continue;
+        if (!occupied.has(`${x},${y}`)) {
+          if (count === targetIndex) return { x, y };
+          count += 1;
         }
-        if (count === targetIndex) {
-          return { x, y };
-        }
-        count += 1;
       }
     }
 
     return null;
+  }
+
+  function placeFood(gridCols, gridRows, snake, rng = Math.random, obstacles = [], gems = []) {
+    const occupied = new Set(snake.map((seg) => `${seg.x},${seg.y}`));
+    obstacles.forEach((o) => occupied.add(`${o.x},${o.y}`));
+    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
+    return findAvailableCell(gridCols, gridRows, occupied, rng);
+  }
+
+  function placeGem(gridCols, gridRows, snake, food, gems, rng) {
+    const occupied = new Set(snake.map((s) => `${s.x},${s.y}`));
+    if (food) occupied.add(`${food.x},${food.y}`);
+    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
+    return findAvailableCell(gridCols, gridRows, occupied, rng);
   }
 
   function placeObstacle(gridCols, gridRows, snake, food, gems, obstacles, rng) {
@@ -333,7 +335,7 @@
     gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
     obstacles.forEach((o) => occupied.add(`${o.x},${o.y}`));
 
-    // Also keep a 2-cell buffer around the snake head to avoid instant death
+    // Keep a 2-cell buffer around the snake head to avoid instant death
     const head = snake[0];
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
@@ -341,52 +343,7 @@
       }
     }
 
-    const totalCells = gridCols * gridRows;
-    const available = totalCells - occupied.size;
-    if (available <= 0) return null;
-
-    const targetIndex = Math.floor(rng() * available);
-    let count = 0;
-
-    for (let y = 0; y < gridRows; y += 1) {
-      for (let x = 0; x < gridCols; x += 1) {
-        if (occupied.has(`${x},${y}`)) continue;
-        if (count === targetIndex) return { x, y };
-        count += 1;
-      }
-    }
-
-    return null;
-  }
-
-  function placeFood(gridCols, gridRows, snake, rng = Math.random, obstacles = [], gems = []) {
-    const totalCells = gridCols * gridRows;
-    const occupied = new Set(snake.map((seg) => `${seg.x},${seg.y}`));
-    obstacles.forEach((o) => occupied.add(`${o.x},${o.y}`));
-    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
-    const available = totalCells - occupied.size;
-
-    if (available <= 0) {
-      return null;
-    }
-
-    const targetIndex = Math.floor(rng() * available);
-    let count = 0;
-
-    for (let y = 0; y < gridRows; y += 1) {
-      for (let x = 0; x < gridCols; x += 1) {
-        const key = `${x},${y}`;
-        if (occupied.has(key)) {
-          continue;
-        }
-        if (count === targetIndex) {
-          return { x, y };
-        }
-        count += 1;
-      }
-    }
-
-    return null;
+    return findAvailableCell(gridCols, gridRows, occupied, rng);
   }
 
   function isSame(a, b) {

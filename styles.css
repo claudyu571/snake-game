@@ -588,3 +588,14 @@ button:disabled {
     width: 100%;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .board-frame.new-best {
+    animation: none;
+  }
+
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

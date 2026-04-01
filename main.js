@@ -55,6 +55,11 @@ let personalBest = 0;
 let newBestCelebrated = false;
 let celebration = null; // { life: 1.0 } when active
 
+// Cached DOM text values — skip writes when nothing has changed.
+let _lastScoreText = "";
+let _lastStatusText = "";
+let _lastPauseBtnText = "";
+
 const KEY_DIR = {
   ArrowUp: "up",
   ArrowDown: "down",
@@ -126,11 +131,15 @@ function getPlayerBest() {
   return personalBest ?? 0;
 }
 
+const _prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 function triggerNewBest() {
   newBestCelebrated = true;
-  celebration = { life: 1.0 };
-  boardFrame.classList.add("new-best");
-  setTimeout(() => boardFrame.classList.remove("new-best"), 900);
+  if (!_prefersReducedMotion) {
+    celebration = { life: 1.0 };
+    boardFrame.classList.add("new-best");
+    setTimeout(() => boardFrame.classList.remove("new-best"), 900);
+  }
 }
 
 function isModalOpen() {
@@ -203,6 +212,7 @@ function savePlayerName(name) {
 
 // ── Firestore leaderboard ──────────────────────────────────────────────────
 let leaderboardUnsubscribe = null;
+let _personalBestEpoch = 0; // incremented on each fetch; stale callbacks are ignored
 
 function getLeaderboardCollection(mode) {
   return db.collection(LEADERBOARD_COLLECTIONS[mode] || LEADERBOARD_COLLECTIONS.classic);
@@ -228,20 +238,28 @@ function subscribeToLeaderboard(mode) {
 function addScoreToFirestore(name, score, mode) {
   if (!name || score <= 0) return;
   getLeaderboardCollection(mode)
-    .add({ name, score, timestamp: Date.now() })
+    .add({ name, score, timestamp: firebase.firestore.FieldValue.serverTimestamp() })
     .catch(() => {});
 }
 
 function fetchPersonalBest(name, mode) {
+  _personalBestEpoch += 1;
+  const epoch = _personalBestEpoch;
+
   if (!name) { personalBest = 0; return; }
+
   getLeaderboardCollection(mode)
     .where("name", "==", name)
     .get()
     .then((snapshot) => {
-      if (snapshot.empty) { personalBest = 0; return; }
-      personalBest = Math.max(...snapshot.docs.map((d) => d.data().score));
+      if (epoch !== _personalBestEpoch) return; // stale — a newer fetch is in flight
+      personalBest = snapshot.empty
+        ? 0
+        : Math.max(...snapshot.docs.map((d) => d.data().score));
     })
-    .catch(() => { personalBest = 0; });
+    .catch(() => {
+      if (epoch === _personalBestEpoch) personalBest = 0;
+    });
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -249,8 +267,10 @@ function compareEntries(a, b) {
   if (b.score !== a.score) {
     return b.score - a.score;
   }
-
-  return a.timestamp - b.timestamp;
+  // Server timestamps are Firestore Timestamp objects (or null while pending).
+  const ta = a.timestamp ? a.timestamp.toMillis?.() ?? a.timestamp : 0;
+  const tb = b.timestamp ? b.timestamp.toMillis?.() ?? b.timestamp : 0;
+  return ta - tb;
 }
 
 function getBestScore(entries) {
@@ -400,7 +420,11 @@ function tick() {
     triggerNewBest();
   }
 
-  updateTickSpeed();
+  // Only recalculate tick speed when something that affects it actually changed.
+  if (state.events && state.events.some((e) => e.type === "eat" || e.type === "gem")) {
+    updateTickSpeed();
+  }
+
   render();
 }
 
@@ -554,12 +578,13 @@ function drawCelebration() {
 // ── Score pops ─────────────────────────────────────────────────────────────
 const pops = [];
 
-const GEM_POP = {
-  bonus:      { text: "+5",     color: "#ffd700" },
-  shrink:     { text: "shrink", color: "#00cfff" },
-  speed:      { text: "speed!", color: "#ff8800" },
-  slow:       { text: "slow",   color: "#aa44ff" },
-  multiplier: { text: "\u00d72!", color: "#ff44aa" },
+// Single source of truth for gem colours and pop labels.
+const GEM_DEFS = {
+  bonus:      { color: "#ffd700", popText: "+5"      },
+  shrink:     { color: "#00cfff", popText: "shrink"  },
+  speed:      { color: "#ff8800", popText: "speed!"  },
+  slow:       { color: "#aa44ff", popText: "slow"    },
+  multiplier: { color: "#ff44aa", popText: "\u00d72!" },
 };
 
 function spawnPop(gridX, gridY, text, color) {
@@ -578,8 +603,8 @@ function spawnPopEvents(events = []) {
     if (e.type === "eat") {
       spawnPop(e.x, e.y, `+${e.points}`, "#edf4ee");
     } else if (e.type === "gem") {
-      const def = GEM_POP[e.gemType];
-      if (def) spawnPop(e.x, e.y, def.text, def.color);
+      const def = GEM_DEFS[e.gemType];
+      if (def) spawnPop(e.x, e.y, def.popText, def.color);
     }
   });
 }
@@ -629,16 +654,8 @@ function drawObstacle(x, y) {
   ctx.fillRect(px + CELL_SIZE - 2, py, 2, CELL_SIZE);
 }
 
-const GEM_COLOURS = {
-  bonus:      "#ffd700",  // gold
-  shrink:     "#00cfff",  // cyan
-  speed:      "#ff8800",  // orange
-  slow:       "#aa44ff",  // purple
-  multiplier: "#ff44aa",  // pink
-};
-
 function drawGem(x, y, type, ticksLeft) {
-  const color = GEM_COLOURS[type] ?? "#ffffff";
+  const color = (GEM_DEFS[type] ?? { color: "#ffffff" }).color;
   const cx = x * CELL_SIZE + CELL_SIZE / 2;
   const cy = y * CELL_SIZE + CELL_SIZE / 2;
   const r = Math.max(3, Math.floor(CELL_SIZE * 0.34));
@@ -664,9 +681,12 @@ function drawGem(x, y, type, ticksLeft) {
 }
 
 function render() {
-  scoreEl.textContent = state ? String(state.score) : "0";
-  statusEl.textContent = getStatusText();
-  pauseBtn.textContent = state?.status === "paused" ? "Resume" : "Pause";
+  const scoreText = state ? String(state.score) : "0";
+  const statusText = getStatusText();
+  const pauseText = state?.status === "paused" ? "Resume" : "Pause";
+  if (scoreText  !== _lastScoreText)   { scoreEl.textContent  = _lastScoreText  = scoreText;  }
+  if (statusText !== _lastStatusText)  { statusEl.textContent = _lastStatusText = statusText; }
+  if (pauseText  !== _lastPauseBtnText){ pauseBtn.textContent = _lastPauseBtnText = pauseText; }
 
   drawBackground();
 
@@ -715,7 +735,7 @@ function handleDpadInput(dir) {
 // ── Swipe detection ────────────────────────────────────────────────────────
 let swipeStartX = null;
 let swipeStartY = null;
-const SWIPE_THRESHOLD = 20;
+const SWIPE_THRESHOLD = Math.max(20, CELL_SIZE * 0.6);
 
 boardFrame.addEventListener("touchstart", (e) => {
   const t = e.touches[0];
@@ -828,11 +848,21 @@ if ("ResizeObserver" in window) {
   document.addEventListener(evt, () => SoundEngine.resume(), { once: true, passive: true });
 });
 
-setPlayer(loadSavedPlayerName());
+const _savedName = loadSavedPlayerName();
+setPlayer(_savedName);
 wrapAround = loadSavedWrapAround();
 wrapToggle.checked = wrapAround;
 applyGameMode(loadSavedGameMode()); // subscribes to leaderboard + fetches personal best
 resizeBoard();
-setControlsEnabled(false);
 render();
-openNameModal();
+
+if (_savedName) {
+  // Skip the modal and jump straight into the game.
+  gameStarted = true;
+  setControlsEnabled(true);
+  resetGame();
+  intervalId = window.setInterval(tick, TICK_MS);
+} else {
+  setControlsEnabled(false);
+  openNameModal();
+}
