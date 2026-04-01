@@ -21,7 +21,7 @@
   const BONUS_GEM_POINTS = 5;
   const SHRINK_AMOUNT = 3;
   const MIN_SNAKE_LENGTH = 3;
-  const EFFECT_DURATION_TICKS = 42; // ~5 seconds at 120ms per tick
+  const EFFECT_DURATION_MS = 5000;  // 5 seconds of real time, speed-independent
   const MULTIPLIER_FOOD_COUNT = 5;
   const GEM_TYPES = ["bonus", "shrink", "speed", "slow", "multiplier"];
 
@@ -170,10 +170,11 @@
       };
     }
 
-    // Tick down active effects and remove expired ones
-    let activeEffects = state.activeEffects
-      .map((e) => ({ ...e, ticksLeft: e.ticksLeft - 1 }))
-      .filter((e) => e.ticksLeft > 0);
+    // Remove expired effects (wall-clock based, same pattern as gems)
+    const effectNow = Date.now();
+    const prevEffectTypes = new Set(state.activeEffects.map((e) => e.type));
+    let activeEffects = state.activeEffects.filter((e) => effectNow < e.expiresAt);
+    const newEffectTypes = new Set(activeEffects.map((e) => e.type));
 
     // Build new snake
     let snake;
@@ -185,6 +186,12 @@
     let obstacles = state.obstacles;
     let nextObstacleScore = state.nextObstacleScore;
     const events = [];
+
+    // Emit effectChange if any effect expired this tick (so main.js can update tick speed)
+    if (prevEffectTypes.size !== newEffectTypes.size ||
+        [...prevEffectTypes].some((t) => !newEffectTypes.has(t))) {
+      events.push({ type: "effectChange" });
+    }
 
     if (hitFood) {
       snake = [newHead, ...state.snake];
@@ -222,21 +229,24 @@
     if (hitGem) {
       events.push({ type: "gem", gemType: hitGem.type, x: hitGem.x, y: hitGem.y });
       if (hitGem.type === "bonus") {
-        score += BONUS_GEM_POINTS;
+        // Bonus respects current score multiplier
+        score += BONUS_GEM_POINTS * scoreMultiplier;
       } else if (hitGem.type === "shrink") {
-        snake = snake.slice(0, Math.max(MIN_SNAKE_LENGTH, snake.length - SHRINK_AMOUNT));
+        // Shrink amount scales with multiplier
+        snake = snake.slice(0, Math.max(MIN_SNAKE_LENGTH, snake.length - SHRINK_AMOUNT * scoreMultiplier));
       } else if (hitGem.type === "speed" || hitGem.type === "slow") {
-        // Replace any existing speed/slow effect
+        // Replace any existing speed/slow effect; duration is real-time based
         activeEffects = activeEffects.filter(
           (e) => e.type !== "speed" && e.type !== "slow"
         );
         activeEffects = [
           ...activeEffects,
-          { type: hitGem.type, ticksLeft: EFFECT_DURATION_TICKS },
+          { type: hitGem.type, expiresAt: Date.now() + EFFECT_DURATION_MS },
         ];
       } else if (hitGem.type === "multiplier") {
-        scoreMultiplier = 2;
-        multiplierFoodLeft = MULTIPLIER_FOOD_COUNT;
+        // Stack: each new 2× gem doubles the current multiplier and adds more food
+        scoreMultiplier = scoreMultiplier <= 1 ? 2 : scoreMultiplier * 2;
+        multiplierFoodLeft += MULTIPLIER_FOOD_COUNT;
       }
     }
 

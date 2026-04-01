@@ -121,6 +121,7 @@ function applyGameMode(mode) {
   modeAdvancedBtn.setAttribute("aria-pressed", String(mode === "advanced"));
   gemHelp.classList.toggle("hidden", mode !== "advanced");
   advancedOptions.classList.toggle("hidden", mode !== "advanced");
+  document.getElementById("boost-card")?.classList.toggle("hidden", mode !== "advanced");
   saveGameMode(mode);
   subscribeToLeaderboard(mode);
   fetchPersonalBest(playerName, mode);
@@ -173,8 +174,9 @@ function getBaseTickMs() {
 function getTickMs() {
   const base = getBaseTickMs();
   if (!state || !state.activeEffects) return base;
-  if (state.activeEffects.some((e) => e.type === "speed")) return Math.max(35, Math.floor(base * 0.55));
-  if (state.activeEffects.some((e) => e.type === "slow")) return Math.min(280, Math.floor(base * 1.65));
+  const m = (state.scoreMultiplier > 1 ? state.scoreMultiplier : 1);
+  if (state.activeEffects.some((e) => e.type === "speed")) return Math.max(35, Math.floor(base * (0.55 / m)));
+  if (state.activeEffects.some((e) => e.type === "slow")) return Math.min(400, Math.floor(base * (1.65 * m)));
   return base;
 }
 
@@ -276,6 +278,23 @@ function compareEntries(a, b) {
 
 function renderPersonalBest() {
   bestScoreEl.textContent = personalBest != null ? String(personalBest) : "-";
+}
+
+function renderMultiplier() {
+  const boostCard = document.getElementById("boost-card");
+  const boostEl = document.getElementById("boost-display");
+  if (!boostCard || !boostEl) return;
+
+  const m = state ? state.scoreMultiplier : 1;
+  const left = state ? state.multiplierFoodLeft : 0;
+
+  if (m > 1) {
+    boostEl.textContent = `${m}\u00d7 (${left})`;
+    boostCard.classList.add("boost-active");
+  } else {
+    boostEl.textContent = "1\u00d7";
+    boostCard.classList.remove("boost-active");
+  }
 }
 
 function renderLeaderboard(entries = [], mode = gameMode) {
@@ -423,8 +442,8 @@ function tick() {
     triggerNewBest();
   }
 
-  // Only recalculate tick speed when something that affects it actually changed.
-  if (state.events && state.events.some((e) => e.type === "eat" || e.type === "gem")) {
+  // Recalculate tick speed when score, gems, or active effects change.
+  if (state.events && state.events.some((e) => e.type === "eat" || e.type === "gem" || e.type === "effectChange")) {
     updateTickSpeed();
   }
 
@@ -456,10 +475,6 @@ function getStatusText() {
     const effect = state.activeEffects[0];
     if (effect.type === "speed") return "Speed!";
     if (effect.type === "slow") return "Slowed";
-  }
-
-  if (state.scoreMultiplier > 1) {
-    return `2x (${state.multiplierFoodLeft} left)`;
   }
 
   return "Running";
@@ -691,6 +706,7 @@ function render() {
   if (scoreText  !== _lastScoreText)   { scoreEl.textContent  = _lastScoreText  = scoreText;  }
   if (statusText !== _lastStatusText)  { statusEl.textContent = _lastStatusText = statusText; }
   if (pauseText  !== _lastPauseBtnText){ pauseBtn.textContent = _lastPauseBtnText = pauseText; }
+  renderMultiplier();
 
   drawBackground();
 
