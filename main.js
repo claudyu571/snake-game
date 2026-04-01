@@ -654,15 +654,16 @@ function drawObstacle(x, y) {
   ctx.fillRect(px + CELL_SIZE - 2, py, 2, CELL_SIZE);
 }
 
-function drawGem(x, y, type, ticksLeft) {
+function drawGem(x, y, type, expiresAt) {
   const color = (GEM_DEFS[type] ?? { color: "#ffffff" }).color;
   const cx = x * CELL_SIZE + CELL_SIZE / 2;
   const cy = y * CELL_SIZE + CELL_SIZE / 2;
   const r = Math.max(3, Math.floor(CELL_SIZE * 0.34));
 
-  // Pulse opacity when fewer than 20 ticks remain (~2.4s warning)
-  const alpha = ticksLeft < 20
-    ? 0.4 + 0.6 * ((ticksLeft % 6) / 6)
+  // Pulse opacity during the last 2 seconds as a warning.
+  const msLeft = expiresAt - Date.now();
+  const alpha = msLeft < 2000
+    ? 0.4 + 0.6 * ((msLeft % 600) / 600)
     : 1;
 
   ctx.save();
@@ -698,7 +699,7 @@ function render() {
     state.obstacles.forEach((o) => drawObstacle(o.x, o.y));
 
     state.gems.forEach((gem) => {
-      drawGem(gem.x, gem.y, gem.type, gem.ticksLeft);
+      drawGem(gem.x, gem.y, gem.type, gem.expiresAt);
     });
 
     state.snake.forEach((segment, index) => {

@@ -13,7 +13,7 @@
     right: "left",
   };
 
-  const GEM_LIFETIME_TICKS = 67;   // ~8 seconds at 120ms per tick
+  const GEM_LIFETIME_MS = 8000;    // 8 seconds of real time, speed-independent
   const GEM_SPAWN_CHANCE = 0.45;   // 45% chance to spawn a gem after eating food
   const MAX_GEMS = 2;
   const OBSTACLE_INTERVAL = 5;     // spawn one obstacle every N points
@@ -240,10 +240,9 @@
       }
     }
 
-    // Tick down gem timers and remove expired ones
-    gems = gems
-      .map((g) => ({ ...g, ticksLeft: g.ticksLeft - 1 }))
-      .filter((g) => g.ticksLeft > 0);
+    // Remove expired gems (lifetime is wall-clock based, not tick-based)
+    const now = Date.now();
+    gems = gems.filter((g) => g.expiresAt > now);
 
     // Try to spawn a gem when food was just eaten (Advanced mode only)
     if (hitFood && status === "playing" && state.enableGems) {
@@ -292,7 +291,7 @@
     }
 
     const type = GEM_TYPES[Math.floor(rng() * GEM_TYPES.length)];
-    return [...gems, { ...pos, type, ticksLeft: GEM_LIFETIME_TICKS }];
+    return [...gems, { ...pos, type, expiresAt: Date.now() + GEM_LIFETIME_MS }];
   }
 
   // Shared helper: pick a random cell not in `occupied`. Returns {x, y} or null.
