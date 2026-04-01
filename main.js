@@ -246,7 +246,7 @@ function fetchPersonalBest(name, mode) {
   _personalBestEpoch += 1;
   const epoch = _personalBestEpoch;
 
-  if (!name) { personalBest = 0; return; }
+  if (!name) { personalBest = 0; renderPersonalBest(); return; }
 
   getLeaderboardCollection(mode)
     .where("name", "==", name)
@@ -256,9 +256,10 @@ function fetchPersonalBest(name, mode) {
       personalBest = snapshot.empty
         ? 0
         : Math.max(...snapshot.docs.map((d) => d.data().score));
+      renderPersonalBest();
     })
     .catch(() => {
-      if (epoch === _personalBestEpoch) personalBest = 0;
+      if (epoch === _personalBestEpoch) { personalBest = 0; renderPersonalBest(); }
     });
 }
 // ───────────────────────────────────────────────────────────────────────────
@@ -273,14 +274,13 @@ function compareEntries(a, b) {
   return ta - tb;
 }
 
-function getBestScore(entries) {
-  return entries.length > 0 ? entries[0].score : 0;
+function renderPersonalBest() {
+  bestScoreEl.textContent = personalBest != null ? String(personalBest) : "-";
 }
 
 function renderLeaderboard(entries = [], mode = gameMode) {
   leaderboardModeNote.textContent = `Top 5 \u00b7 ${mode === "advanced" ? "Advanced" : "Classic"}`;
   leaderboardBody.innerHTML = "";
-  bestScoreEl.textContent = String(getBestScore(entries));
 
   if (entries.length === 0) {
     const row = document.createElement("tr");
@@ -374,6 +374,7 @@ function resetGame() {
   celebration = null;
   personalBest = null; // fetched async — null prevents false celebrations
   newBestCelebrated = false;
+  renderPersonalBest();
   fetchPersonalBest(playerName, gameMode);
   const isAdvanced = gameMode === "advanced";
   state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: isAdvanced, enableObstacles: isAdvanced, wrapAround: isAdvanced && wrapAround });
@@ -417,6 +418,8 @@ function tick() {
   spawnPopEvents(state.events);
 
   if (!newBestCelebrated && personalBest !== null && state.score > personalBest) {
+    personalBest = state.score;
+    renderPersonalBest();
     triggerNewBest();
   }
 
