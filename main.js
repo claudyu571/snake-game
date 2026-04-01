@@ -2,9 +2,9 @@ const CELL_SIZE = 33;
 const TICK_MS = 120;
 const MIN_TICK_MS = 50;
 const SPEED_STEP = 3; // ms reduction per point scored
-const LEADERBOARD_KEYS = {
-  classic: "snake.leaderboard.classic.v1",
-  advanced: "snake.leaderboard.advanced.v1",
+const LEADERBOARD_COLLECTIONS = {
+  classic:  "leaderboard_classic",
+  advanced: "leaderboard_advanced",
 };
 const PLAYER_NAME_KEY = "snake.playerName.v1";
 const GAME_MODE_KEY = "snake.gameMode.v1";
@@ -117,14 +117,13 @@ function applyGameMode(mode) {
   gemHelp.classList.toggle("hidden", mode !== "advanced");
   advancedOptions.classList.toggle("hidden", mode !== "advanced");
   saveGameMode(mode);
-  renderLeaderboard(loadLeaderboard(mode), mode);
+  subscribeToLeaderboard(mode);
+  fetchPersonalBest(playerName, mode);
   resetGame();
 }
 
-function getPlayerBest(name, mode) {
-  if (!name) return 0;
-  const entry = loadLeaderboard(mode).find((e) => e.name === name);
-  return entry ? entry.score : 0;
+function getPlayerBest() {
+  return personalBest ?? 0;
 }
 
 function triggerNewBest() {
@@ -202,43 +201,49 @@ function savePlayerName(name) {
   }
 }
 
-function loadLeaderboard(mode = gameMode) {
-  try {
-    const raw = localStorage.getItem(LEADERBOARD_KEYS[mode]);
-    if (!raw) {
-      return [];
-    }
+// ── Firestore leaderboard ──────────────────────────────────────────────────
+let leaderboardUnsubscribe = null;
 
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map((entry) => ({
-        name: sanitizeName(typeof entry?.name === "string" ? entry.name : ""),
-        score:
-          Number.isFinite(entry?.score) && entry.score >= 0 ? entry.score : 0,
-        timestamp:
-          Number.isFinite(entry?.timestamp) && entry.timestamp > 0
-            ? entry.timestamp
-            : Date.now(),
-      }))
-      .filter((entry) => entry.name)
-      .sort(compareEntries)
-      .slice(0, 5);
-  } catch (error) {
-    return [];
-  }
+function getLeaderboardCollection(mode) {
+  return db.collection(LEADERBOARD_COLLECTIONS[mode] || LEADERBOARD_COLLECTIONS.classic);
 }
 
-function saveLeaderboard(entries, mode = gameMode) {
-  try {
-    localStorage.setItem(LEADERBOARD_KEYS[mode], JSON.stringify(entries));
-  } catch (error) {
-    // Ignore storage failures and continue without persistence.
-  }
+function subscribeToLeaderboard(mode) {
+  if (leaderboardUnsubscribe) leaderboardUnsubscribe();
+
+  leaderboardUnsubscribe = getLeaderboardCollection(mode)
+    .orderBy("score", "desc")
+    .limit(5)
+    .onSnapshot(
+      (snapshot) => {
+        const entries = snapshot.docs
+          .map((doc) => doc.data())
+          .sort(compareEntries);
+        renderLeaderboard(entries, mode);
+      },
+      () => renderLeaderboard([], mode)
+    );
 }
+
+function addScoreToFirestore(name, score, mode) {
+  if (!name || score <= 0) return;
+  getLeaderboardCollection(mode)
+    .add({ name, score, timestamp: Date.now() })
+    .catch(() => {});
+}
+
+function fetchPersonalBest(name, mode) {
+  if (!name) { personalBest = 0; return; }
+  getLeaderboardCollection(mode)
+    .where("name", "==", name)
+    .get()
+    .then((snapshot) => {
+      if (snapshot.empty) { personalBest = 0; return; }
+      personalBest = Math.max(...snapshot.docs.map((d) => d.data().score));
+    })
+    .catch(() => { personalBest = 0; });
+}
+// ───────────────────────────────────────────────────────────────────────────
 
 function compareEntries(a, b) {
   if (b.score !== a.score) {
@@ -252,7 +257,7 @@ function getBestScore(entries) {
   return entries.length > 0 ? entries[0].score : 0;
 }
 
-function renderLeaderboard(entries = loadLeaderboard(), mode = gameMode) {
+function renderLeaderboard(entries = [], mode = gameMode) {
   leaderboardModeNote.textContent = `Top 5 \u00b7 ${mode === "advanced" ? "Advanced" : "Classic"}`;
   leaderboardBody.innerHTML = "";
   bestScoreEl.textContent = String(getBestScore(entries));
@@ -286,21 +291,7 @@ function renderLeaderboard(entries = loadLeaderboard(), mode = gameMode) {
 }
 
 function recordScore(score) {
-  if (!playerName || score <= 0) {
-    renderLeaderboard();
-    return;
-  }
-
-  const entries = loadLeaderboard();
-  entries.push({
-    name: playerName,
-    score,
-    timestamp: Date.now(),
-  });
-
-  const trimmed = entries.sort(compareEntries).slice(0, 5);
-  saveLeaderboard(trimmed);
-  renderLeaderboard(trimmed);
+  addScoreToFirestore(playerName, score, gameMode);
 }
 
 function setPlayer(name) {
@@ -361,8 +352,9 @@ function resetGame() {
 
   pops.length = 0;
   celebration = null;
-  personalBest = getPlayerBest(playerName, gameMode);
+  personalBest = null; // fetched async — null prevents false celebrations
   newBestCelebrated = false;
+  fetchPersonalBest(playerName, gameMode);
   const isAdvanced = gameMode === "advanced";
   state = SnakeLogic.createInitialState({ gridCols, gridRows, enableGems: isAdvanced, enableObstacles: isAdvanced, wrapAround: isAdvanced && wrapAround });
   render();
@@ -404,7 +396,7 @@ function tick() {
   playSoundEvents(state.events);
   spawnPopEvents(state.events);
 
-  if (!newBestCelebrated && state.score > personalBest && personalBest >= 0) {
+  if (!newBestCelebrated && personalBest !== null && state.score > personalBest) {
     triggerNewBest();
   }
 
@@ -839,9 +831,8 @@ if ("ResizeObserver" in window) {
 setPlayer(loadSavedPlayerName());
 wrapAround = loadSavedWrapAround();
 wrapToggle.checked = wrapAround;
-applyGameMode(loadSavedGameMode());
+applyGameMode(loadSavedGameMode()); // subscribes to leaderboard + fetches personal best
 resizeBoard();
 setControlsEnabled(false);
-renderLeaderboard();
 render();
 openNameModal();
