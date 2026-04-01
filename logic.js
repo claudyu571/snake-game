@@ -204,7 +204,7 @@
         food = null;
         events.push({ type: "win" });
       } else {
-        food = placeFood(gridCols, gridRows, snake, rng);
+        food = placeFood(gridCols, gridRows, snake, rng, state.obstacles, state.gems);
       }
     } else {
       snake = [newHead, ...state.snake.slice(0, -1)];
@@ -359,9 +359,11 @@
     return null;
   }
 
-  function placeFood(gridCols, gridRows, snake, rng = Math.random) {
+  function placeFood(gridCols, gridRows, snake, rng = Math.random, obstacles = [], gems = []) {
     const totalCells = gridCols * gridRows;
     const occupied = new Set(snake.map((seg) => `${seg.x},${seg.y}`));
+    obstacles.forEach((o) => occupied.add(`${o.x},${o.y}`));
+    gems.forEach((g) => occupied.add(`${g.x},${g.y}`));
     const available = totalCells - occupied.size;
 
     if (available <= 0) {
